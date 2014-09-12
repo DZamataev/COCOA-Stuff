@@ -6,8 +6,8 @@
 
 @interface GGReadabilityParser ( private )
 
-- (NSXMLElement *)findBaseLevelContent:(NSXMLElement *)element;
-- (NSInteger)scoreElement:(NSXMLElement *)element;
+- (GDataXMLElement *)findBaseLevelContent:(GDataXMLElement *)element;
+- (NSInteger)scoreElement:(GDataXMLElement *)element;
 
 @end
 
@@ -148,24 +148,24 @@ didReceiveResponse:(NSURLResponse *)response
     
     NSError * error = nil; // we dont actually pay attention to this
     
-    NSInteger types[2] = {
-        NSXMLDocumentTidyHTML,
-        NSXMLDocumentTidyXML
-    };
+    NSArray *types = [[NSArray alloc] initWithObjects:@"HTML", @"XML", nil];
     
-    NSXMLDocument * XML = nil;
-    NSXMLElement * theEl = nil;
+    GDataXMLDocument * XML = nil;
+    GDataXMLElement * theEl = nil;
     
     // different types, html, xml
     BOOL OKToGo = NO;
-    for( NSInteger i = 0; i < sizeof( types ) / sizeof( NSInteger ); i++ )
+    for( NSString *s in types )
     {
-        XML = [[[NSXMLDocument alloc] initWithXMLString:string
-                                                options:types[i]
-                                                  error:&error] autorelease];
+        if ([s isEqualToString:@"HTML"]) {
+            XML = [[[GDataXMLDocument alloc] initWithHTMLString:string error:&error] autorelease];
+        }
+        else if ([s isEqualToString:@"XML"]) {
+            XML = [[[GDataXMLDocument alloc] initWithXMLString:string error:&error] autorelease];
+        }
         
         // find the body tag
-        NSXMLElement * el = [[XML nodesForXPath:@"//body"
+        GDataXMLElement * el = [[XML nodesForXPath:@"//body"
                                           error:&error] lastObject];
         
         // is there a child count?
@@ -185,7 +185,7 @@ didReceiveResponse:(NSURLResponse *)response
     }
     
     // let the fun begin
-    NSXMLElement * element = [self findBaseLevelContent:theEl];
+    GDataXMLElement * element = [self findBaseLevelContent:theEl];
     
     if( ! element )
     {
@@ -243,9 +243,9 @@ didReceiveResponse:(NSURLResponse *)response
     {
         NSArray * removeElements = [element nodesForXPath:[NSString stringWithFormat:@"//%@",tagToRemove]
                                                     error:&error];
-        for( NSXMLElement * removeEl in removeElements )
+        for( GDataXMLElement * removeEl in removeElements )
         {
-            [(NSXMLElement *)[removeEl parent] removeChildAtIndex:[removeEl index]];
+            [(GDataXMLElement *)[removeEl parent] removeChildAtIndex:[removeEl index]];
         }
     }
     
@@ -254,7 +254,7 @@ didReceiveResponse:(NSURLResponse *)response
     {
         NSArray * cleanArray = [element nodesForXPath:@"//*[@style]"
                                                 error:&error];
-        for( NSXMLElement * cleanElement in cleanArray )
+        for( GDataXMLElement * cleanElement in cleanArray )
         {
             [cleanElement removeAttributeForName:@"style"];
         }
@@ -266,7 +266,7 @@ didReceiveResponse:(NSURLResponse *)response
         NSArray * lookFor = [NSArray arrayWithObjects:@"similar",@"bookmark",@"links",@"social",@"nav",@"comments",@"comment",@"date",@"author",@"time",@"cat",@"related", nil];
         NSArray * allElements = [element nodesForXPath:@"//*"
                                                  error:&error];
-        for( NSXMLElement * theElement in allElements )
+        for( GDataXMLElement * theElement in allElements )
         {
             // grab the ids
             NSArray * idNames = [[[theElement attributeForName:@"id"] stringValue] componentsSeparatedByString:@" "];
@@ -293,7 +293,7 @@ didReceiveResponse:(NSURLResponse *)response
             
             if( killElement )
             {
-                [(NSXMLElement *)[theElement parent] removeChildAtIndex:[theElement index]];
+                [(GDataXMLElement *)[theElement parent] removeChildAtIndex:[theElement index]];
                 continue;
             }
             
@@ -317,7 +317,7 @@ didReceiveResponse:(NSURLResponse *)response
             // if kill element, remove it!
             if( killElement )
             {
-                [(NSXMLElement *)[theElement parent] removeChildAtIndex:[theElement index]];
+                [(GDataXMLElement *)[theElement parent] removeChildAtIndex:[theElement index]];
             }
             
         }
@@ -339,20 +339,29 @@ didReceiveResponse:(NSURLResponse *)response
     }
     
     // ignore the name, just easy to reuse
-    NSString * baseURL = [NSString stringWithFormat:@"%@://%@",[[URLResponse URL] scheme],[[URLResponse URL] host]];
+    NSURL *baseURL = URLResponse ? [URLResponse URL] : URL;
+    NSString * baseURLString = [NSString stringWithFormat:@"%@://%@",[baseURL scheme],[baseURL host]];
+    
     for( NSDictionary * dict in elementsToRemove )
     {
         // grab the elements
         NSArray * els = [element nodesForXPath:[NSString stringWithFormat:@"//%@",[dict objectForKey:@"tagName"]]
                                          error:&error];
-        for( NSXMLElement * fixEl in els )
+        for( GDataXMLElement * fixEl in els )
         {
-            NSXMLNode * attribute = [fixEl attributeForName:[dict objectForKey:@"attributeName"]];
-            if( [[attribute stringValue] length] != 0 && 
+            GDataXMLNode * attribute = [fixEl attributeForName:[dict objectForKey:@"attributeName"]];
+            if ( [[attribute stringValue] length] > 1 &&
+                [[[attribute stringValue] substringToIndex:2] isEqualToString:@"//"] )
+            {
+                // needs fixing
+                NSString * newAttributeString = [NSString stringWithFormat:@"%@%@",[baseURL scheme],[attribute stringValue]];
+                [attribute setStringValue:newAttributeString];
+            }
+            else if( [[attribute stringValue] length] != 0 &&
                [[[attribute stringValue] substringToIndex:1] isEqualToString:@"/"] )
             {
                 // needs fixing
-                NSString * newAttributeString = [NSString stringWithFormat:@"%@%@",baseURL,[attribute stringValue]];
+                NSString * newAttributeString = [NSString stringWithFormat:@"%@%@",baseURLString,[attribute stringValue]];
                 [attribute setStringValue:newAttributeString];
             }
         }
@@ -379,7 +388,7 @@ didReceiveResponse:(NSURLResponse *)response
     });   
 }
 
-- (NSXMLElement *)findBaseLevelContent:(NSXMLElement *)element
+- (GDataXMLElement *)findBaseLevelContent:(GDataXMLElement *)element
 {
     NSError * error = nil; // again, we dont actually care
     // generally speaking, the content lies within ptags - we hope
@@ -391,9 +400,9 @@ didReceiveResponse:(NSURLResponse *)response
         // find them all
         NSArray * removeArray = [element nodesForXPath:[NSString stringWithFormat:@"//%@",removeTag]
                                                  error:&error];
-        for( NSXMLElement * removeElement in removeArray )
+        for( GDataXMLElement * removeElement in removeArray )
         {
-            [(NSXMLElement *)[removeElement parent] removeChildAtIndex:[removeElement index]];
+            [(GDataXMLElement *)[removeElement parent] removeChildAtIndex:[removeElement index]];
         }
     }
     
@@ -401,7 +410,7 @@ didReceiveResponse:(NSURLResponse *)response
     NSArray * instantWins = [NSArray arrayWithObjects:@"article-body", nil];
     
     NSInteger pCount = 0;
-    NSXMLElement * foundElement = nil;
+    GDataXMLElement * foundElement = nil;
     
     for( NSString * instantWinName in instantWins )
     {
@@ -409,7 +418,7 @@ didReceiveResponse:(NSURLResponse *)response
                                            error:&error];
         if( [nodes count] != 0 )
         {
-            for( NSXMLElement * winElement in nodes )
+            for( GDataXMLElement * winElement in nodes )
             {
                 NSInteger count = [[winElement nodesForXPath:@"//p"
                                                        error:&error] count];
@@ -432,10 +441,10 @@ didReceiveResponse:(NSURLResponse *)response
                                       error:&error];
     
     NSInteger currentCount = 0;
-    NSXMLElement * tagParent = nil;
-    for( NSXMLElement * tag in tags )
+    GDataXMLElement * tagParent = nil;
+    for( GDataXMLElement * tag in tags )
     {
-        NSXMLElement * parent = (NSXMLElement *)[tag parent];
+        GDataXMLElement * parent = (GDataXMLElement *)[tag parent];
         
         // count how many p tags are inside the parent
         NSInteger parentTagsCount = [[parent nodesForXPath:@"p"
@@ -456,9 +465,9 @@ didReceiveResponse:(NSURLResponse *)response
         usingBR = YES;
         tags = [element nodesForXPath:@"//br"
                                 error:&error];
-        for( NSXMLElement * tag in tags )
+        for( GDataXMLElement * tag in tags )
         {
-            NSXMLElement * parent = (NSXMLElement *)[tag parent];
+            GDataXMLElement * parent = (GDataXMLElement *)[tag parent];
             
             // count how many br tags there are
             NSInteger parentTagsCount = [[parent nodesForXPath:@"br"
@@ -477,9 +486,9 @@ didReceiveResponse:(NSURLResponse *)response
     {
         NSInteger textChildren = 0;
         NSInteger brs = 0;
-        for( NSXMLElement * el in [tagParent children] )
+        for( GDataXMLElement * el in [tagParent children] )
         {
-            if( [el kind] == NSXMLTextKind )
+            if( [el kind] == GDataXMLTextKind )
             {
                 textChildren++;
             } else if ( [[[el name] lowercaseString] isEqualToString:@"br"] ) {
@@ -495,9 +504,9 @@ didReceiveResponse:(NSURLResponse *)response
             // remove any br tags directly next to each other
             NSArray * brs = [tagParent nodesForXPath:@"//br[preceding-sibling::br[1]]"
                                                error:&error];
-            for( NSXMLElement * br in brs )
+            for( GDataXMLElement * br in brs )
             {
-                [(NSXMLElement *)[br parent] removeChildAtIndex:[br index]];
+                [(GDataXMLElement *)[br parent] removeChildAtIndex:[br index]];
             }
         }
         
@@ -513,10 +522,10 @@ didReceiveResponse:(NSURLResponse *)response
         
         NSMutableDictionary * scoreDict = [[[NSMutableDictionary alloc] init] autorelease];
     
-        NSXMLElement * currentElement = nil;
+        GDataXMLElement * currentElement = nil;
     
         // grab everything that has it within class or id
-        for( NSXMLElement * el in elements )
+        for( GDataXMLElement * el in elements )
         {  
             // grab its hash
             NSInteger score = [scoreDict objectForKey:el] ? [[scoreDict objectForKey:el] integerValue] : 0;
@@ -535,7 +544,7 @@ didReceiveResponse:(NSURLResponse *)response
     return tagParent;
 }
 
-- (NSInteger)scoreElement:(NSXMLElement *)element
+- (NSInteger)scoreElement:(GDataXMLElement *)element
 {
     // these are key words that will probably be inside the class or id of the element that houses the content
     NSArray * scores = [NSArray arrayWithObjects:@"post",@"entry",@"content",@"text",@"article",@"story",@"blog", nil];

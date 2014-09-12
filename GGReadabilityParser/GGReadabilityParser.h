@@ -2,6 +2,9 @@
  Copyright (c) 2012 Curtis Hard - GeekyGoodness
 */
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#import <GDataXMLNode.h>
+
 
 typedef void (^GGReadabilityParserCompletionHandler)( NSString * content );
 typedef void (^GGReadabilityParserErrorHandler)( NSError * error );

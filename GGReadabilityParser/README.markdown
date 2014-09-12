@@ -24,6 +24,12 @@ To get readability to parser just call:
 	
 If you want to check the load progress of it then you can simply check the loadProgress ivar - you can also bind to this.
 
+## Improvements in this fork
+------------------------------------
+This version is built against https://github.com/DZamataev/GDataXML-HTML parsing lib which runs both on iOS and OSX.
+Also some improvements to the algorithm is currently in progress. The goal is to make GGReadabilityParser work with iOS WebView, which involves parsing non-valid HTML and performing image resource loading and caching locally along with modifying the links in the resulting document to point to the local resources.
+
+
 ## Licence
 GGReadabilityParser is free to use for everyone.
 
